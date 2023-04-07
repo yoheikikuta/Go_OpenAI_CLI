@@ -93,8 +93,7 @@ func getAPIResponse(prompt string) ([]byte, error) {
 }
 
 func displayAPIResponse(body []byte) {
-	fmt.Printf("Full API response: %s\n", string(body))
-
+	// APIレスポンスをデコードします。
 	var apiResponse OpenAIResponse
 	err := json.Unmarshal(body, &apiResponse)
 	if err != nil {
