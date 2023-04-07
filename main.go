@@ -33,14 +33,20 @@ type OpenAIResponse struct {
 }
 
 func main() {
-	processArguments()
+	// コマンドライン引数を確認し、プロンプトを取得します。
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run main.go [your-text]")
+		os.Exit(1)
+	}
+	prompt := os.Args[1]
 
-	prompt := "What is the capital of France?"
+	// APIを叩きます。
 	body, err := getAPIResponse(prompt)
 	if err != nil {
 		log.Fatalf("Error calling the API: %v", err)
 	}
 
+	// APIレスポンスを表示します。
 	displayAPIResponse(body)
 }
 
