@@ -1,0 +1,1 @@
+go run main.go "tell me a nice joke" 2> stderr.log

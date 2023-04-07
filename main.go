@@ -1,73 +1,127 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"bytes"
 )
 
-type OpenAIRequest struct {
-	Prompt   string `json:"prompt"`
-	MaxTokens int    `json:"max_tokens"`
+type OpenAIError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 type OpenAIResponse struct {
-	Choices []struct {
-		Text string `json:"text"`
-	} `json:"choices"`
+    ID      string `json:"id"`
+    Object  string `json:"object"`
+    Created int    `json:"created"`
+    Model   string `json:"model"`
+    Choices []struct {
+        Message struct { // 追加
+            Role    string `json:"role"`
+            Content string `json:"content"` // TextからContentに変更
+        } `json:"message"`
+        Index        int         `json:"index"`
+        Logprobs     interface{} `json:"logprobs"`
+        FinishReason string      `json:"finish_reason"`
+    } `json:"choices"`
+    Error *OpenAIError `json:"error"`
 }
 
-func callOpenAI(prompt string) (*OpenAIResponse, error) {
-	apiURL := "https://api.openai.com/v1/engines/davinci-codex/completions"
-
-	// APIキーを環境変数から取得
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		return nil, fmt.Errorf("OPENAI_API_KEY environment variable not set")
-	}
-
-	// APIリクエストの作成
-	requestData := &OpenAIRequest{
-		Prompt:   prompt,
-		MaxTokens: 50,
-	}
-
-	jsonData, err := json.Marshal(requestData)
+func loadAPIKey() (string, error) {
+	apiKeyBytes, err := ioutil.ReadFile("api_key.txt")
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal JSON request: %v", err)
+		return "", err
 	}
+	return string(apiKeyBytes), nil
+}
 
-	// APIリクエストの実行
-	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonData))
+func callOpenAIAPI(prompt string) ([]byte, error) {
+	// APIエンドポイントと認証情報を設定します。
+  apiKey, err := loadAPIKey()
+	endpoint := "https://api.openai.com/v1/chat/completions"
+
+    // APIリクエストを作成します。
+    params := map[string]interface{}{
+        "model":      "gpt-3.5-turbo",
+        "messages": []map[string]string{
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        },
+        "temperature": 1.0,
+    }
+
+    paramsJSON, err := json.Marshal(params)
+    if err != nil {
+        return nil, err
+    }
+
+    req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(paramsJSON))
+    if err != nil {
+        return nil, err
+    }
+
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+
+    // APIリクエストを実行します。
+    client := &http.Client{}
+    resp, err := client.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    // APIレスポンスを読み込みます。
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+
+    return body, nil
+}
+
+func processArguments() {
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run main.go [your-text]")
+		os.Exit(1)
+	}
+}
+
+func main() {
+	processArguments()
+
+	// APIを叩く
+	prompt := "What is the capital of France?"
+	body, err := callOpenAIAPI(prompt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new request: %v", err)
+		log.Fatalf("Error calling the API: %v", err)
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", apiKey))
+	// APIレスポンス全体を出力
+	fmt.Printf("Full API response: %s\n", string(body))
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	// APIレスポンスをデコードします。
+	var apiResponse OpenAIResponse
+	err = json.Unmarshal(body, &apiResponse)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %v", err)
-	}
-	defer resp.Body.Close()
+		        log.Fatalf("Error unmarshalling the API response: %v", err)
+    }
 
-	// APIレスポンスの処理
-	responseData, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %v", err)
-	}
-
-	var response OpenAIResponse
-	if err = json.Unmarshal(responseData, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON response: %v", err)
-	}
-
-	return &response, nil
+    if &apiResponse != nil {
+        if apiResponse.Error != nil {
+            fmt.Printf("Error from the OpenAI API: %s - %s\n", apiResponse.Error.Code, apiResponse.Error.Message)
+        } else if len(apiResponse.Choices) > 0 {
+            fmt.Printf("Response from the OpenAI API: %s\n", apiResponse.Choices[0].Message.Content)
+        } else {
+            fmt.Println("No choices returned from the OpenAI API")
+        }
+    }
 }
 
