@@ -113,14 +113,17 @@ func displayAPIResponse(body []byte) {
 
 func buildAPIParams(prompt string) map[string]interface{} {
 	return map[string]interface{}{
-		"model":       "gpt-3.5-turbo",
+		"model": "gpt-3.5-turbo",
 		"messages": []map[string]string{
 			{
-				"role":    "user",
+				"role": "user",
 				"content": prompt,
 			},
 		},
-		"temperature": 1.0,
+		"max_tokens": 50,     // 応答の最大トークン数を制限
+		"n":          1,       // 生成する応答の数
+		"stop":       []string{"\n"}, // 改行で応答生成を停止
+		"temperature": 0.8,    // サンプリングのランダム性を調整
 	}
 }
 
