@@ -126,16 +126,22 @@ func displayAPIResponse(body []byte) map[string]string {
 }
 
 func buildAPIParams(prompt string, messages []map[string]string) map[string]interface{} {
-	messages = append(messages, map[string]string{
-		"role":    "user",
-		"content": prompt,
-	})
+    messages = append(messages, map[string]string{
+        "role":    "user",
+        "content": prompt,
+    })
 
-	return map[string]interface{}{
-		"model":       "gpt-3.5-turbo",
-		"messages":    messages,
-		"temperature": 1.0,
-	}
+    maxTokens := 50
+    temperature := 0.8
+    topP := 0.9
+
+    return map[string]interface{}{
+        "model":       "gpt-3.5-turbo",
+        "messages":    messages,
+        "max_tokens":  maxTokens,
+        "temperature": temperature,
+        "top_p":       topP,
+    }
 }
 
 func setRequestHeaders(req *http.Request, apiKey string) {
