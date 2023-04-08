@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"bytes"
+  "bufio"
+  "strings"
 )
 
 type OpenAIError struct {
@@ -33,21 +35,36 @@ type OpenAIResponse struct {
 }
 
 func main() {
-	// コマンドライン引数を確認し、プロンプトを取得します。
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go [your-text]")
-		os.Exit(1)
-	}
-	prompt := os.Args[1]
+	if len(os.Args) > 1 {
+		prompt := os.Args[1]
+		body, err := getAPIResponse(prompt)
+		if err != nil {
+			log.Fatalf("Error calling the API: %v", err)
+		}
+		displayAPIResponse(body)
+	} else {
+		reader := bufio.NewReader(os.Stdin)
 
-	// APIを叩きます。
-	body, err := getAPIResponse(prompt)
-	if err != nil {
-		log.Fatalf("Error calling the API: %v", err)
-	}
+		for {
+			fmt.Print("Enter your message: ")
+			prompt, err := reader.ReadString('\n')
+			if err != nil {
+				log.Fatalf("Error reading input: %v", err)
+			}
 
-	// APIレスポンスを表示します。
-	displayAPIResponse(body)
+			prompt = strings.TrimSpace(prompt)
+			if prompt == "exit" {
+				break
+			}
+
+			body, err := getAPIResponse(prompt)
+			if err != nil {
+				log.Fatalf("Error calling the API: %v", err)
+			}
+
+			displayAPIResponse(body)
+		}
+	}
 }
 
 func processArguments() {

@@ -4,7 +4,7 @@ a:
 
 .PHONY: run
 run: build
-	./main "${p}"
+	./main
 
 .PHONY: build
 build:
