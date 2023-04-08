@@ -1,15 +1,15 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
-	"bytes"
-  "bufio"
-  "strings"
+	"strings"
 )
 
 type OpenAIError struct {
@@ -35,52 +35,44 @@ type OpenAIResponse struct {
 }
 
 func main() {
-	if len(os.Args) > 1 {
-		prompt := os.Args[1]
-		body, err := getAPIResponse(prompt)
-		if err != nil {
-			log.Fatalf("Error calling the API: %v", err)
-		}
-		displayAPIResponse(body)
-	} else {
-		reader := bufio.NewReader(os.Stdin)
+    reader := bufio.NewReader(os.Stdin)
+    messages := make([]map[string]string, 0)
 
-		for {
-			fmt.Print("Enter your message: ")
-			prompt, err := reader.ReadString('\n')
-			if err != nil {
-				log.Fatalf("Error reading input: %v", err)
-			}
+    for {
+        fmt.Print("Enter your message: ")
+        prompt, err := reader.ReadString('\n')
+        if err != nil {
+            log.Fatalf("Error reading input: %v", err)
+        }
 
-			prompt = strings.TrimSpace(prompt)
-			if prompt == "exit" {
-				break
-			}
+        prompt = strings.TrimSpace(prompt)
+        if prompt == "exit" {
+            break
+        }
 
-			body, err := getAPIResponse(prompt)
-			if err != nil {
-				log.Fatalf("Error calling the API: %v", err)
-			}
+        userMessage := map[string]string{
+            "role":    "user",
+            "content": prompt,
+        }
+        messages = append(messages, userMessage)
 
-			displayAPIResponse(body)
-		}
-	}
+        params := buildAPIParams(prompt, messages)
+        body, err := getAPIResponse(params)
+        if err != nil {
+            log.Fatalf("Error calling the API: %v", err)
+        }
+
+        responseMessage := displayAPIResponse(body)
+        messages = append(messages, responseMessage)
+    }
 }
 
-func processArguments() {
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go [your-text]")
-		os.Exit(1)
-	}
-}
-
-func getAPIResponse(prompt string) ([]byte, error) {
+func getAPIResponse(params map[string]interface{}) ([]byte, error) {
 	apiKey, err := loadAPIKey()
 	if err != nil {
 		return nil, err
 	}
 
-	params := buildAPIParams(prompt)
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
 		return nil, err
@@ -109,8 +101,7 @@ func getAPIResponse(prompt string) ([]byte, error) {
 	return body, nil
 }
 
-func displayAPIResponse(body []byte) {
-	// APIレスポンスをデコードします。
+func displayAPIResponse(body []byte) map[string]string {
 	var apiResponse OpenAIResponse
 	err := json.Unmarshal(body, &apiResponse)
 	if err != nil {
@@ -121,26 +112,29 @@ func displayAPIResponse(body []byte) {
 		if apiResponse.Error != nil {
 			fmt.Printf("Error from the OpenAI API: %s - %s\n", apiResponse.Error.Code, apiResponse.Error.Message)
 		} else if len(apiResponse.Choices) > 0 {
-			fmt.Printf("Response from the OpenAI API: %s\n", apiResponse.Choices[0].Message.Content)
+			response := apiResponse.Choices[0].Message.Content
+			fmt.Printf("Response from the OpenAI API: %s\n", response)
+			return map[string]string{
+				"role":    "assistant",
+				"content": response,
+			}
 		} else {
 			fmt.Println("No choices returned from the OpenAI API")
 		}
 	}
+	return nil
 }
 
-func buildAPIParams(prompt string) map[string]interface{} {
+func buildAPIParams(prompt string, messages []map[string]string) map[string]interface{} {
+	messages = append(messages, map[string]string{
+		"role":    "user",
+		"content": prompt,
+	})
+
 	return map[string]interface{}{
-		"model": "gpt-3.5-turbo",
-		"messages": []map[string]string{
-			{
-				"role": "user",
-				"content": prompt,
-			},
-		},
-		"max_tokens": 50,     // 応答の最大トークン数を制限
-		"n":          1,       // 生成する応答の数
-		"stop":       []string{"\n"}, // 改行で応答生成を停止
-		"temperature": 0.8,    // サンプリングのランダム性を調整
+		"model":       "gpt-3.5-turbo",
+		"messages":    messages,
+		"temperature": 1.0,
 	}
 }
 
