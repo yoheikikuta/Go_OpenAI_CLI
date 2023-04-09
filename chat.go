@@ -4,14 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
-	"io"
 )
 
 type OpenAIError struct {
@@ -63,7 +64,10 @@ func main() {
 		}
 		messages = append(messages, userMessage)
 
-		params := buildAPIParams(prompt, messages)
+		params, err := buildAPIParams(prompt, messages)
+		if err != nil {
+			log.Fatalf("Error building API params: %v", err)
+		}
 
 		wg.Add(1)
 		go func() {
@@ -152,7 +156,11 @@ func getAPIResponse(params map[string]interface{}) error {
 	return nil
 }
 
-func buildAPIParams(prompt string, messages []map[string]string) map[string]interface{} {
+func buildAPIParams(prompt string, messages []map[string]string) (map[string]interface{}, error) {
+	if len(messages) == 0 {
+		return nil, errors.New("messages should not be empty")
+	}
+
 	messages = append(messages, map[string]string{
 		"role":    "user",
 		"content": prompt,
@@ -169,7 +177,7 @@ func buildAPIParams(prompt string, messages []map[string]string) map[string]inte
 		"temperature": temperature,
 		"top_p":       topP,
 		"stream":      true,
-	}
+	}, nil
 }
 
 func setRequestHeaders(req *http.Request, apiKey string) {
