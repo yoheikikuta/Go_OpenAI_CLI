@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"io"
 )
 
 type OpenAIError struct {
@@ -27,6 +29,9 @@ type OpenAIResponse struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"message"`
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
 		Index        int         `json:"index"`
 		Logprobs     interface{} `json:"logprobs"`
 		FinishReason string      `json:"finish_reason"`
@@ -35,53 +40,59 @@ type OpenAIResponse struct {
 }
 
 func main() {
-    reader := bufio.NewReader(os.Stdin)
-    messages := make([]map[string]string, 0)
+	reader := bufio.NewReader(os.Stdin)
+	messages := make([]map[string]string, 0)
 
-    for {
-        fmt.Print("Enter your message: ")
-        prompt, err := reader.ReadString('\n')
-        if err != nil {
-            log.Fatalf("Error reading input: %v", err)
-        }
+	var wg sync.WaitGroup
 
-        prompt = strings.TrimSpace(prompt)
-        if prompt == "exit" {
-            break
-        }
+	for {
+		fmt.Print("Enter your message: ")
+		prompt, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatalf("Error reading input: %v", err)
+		}
 
-        userMessage := map[string]string{
-            "role":    "user",
-            "content": prompt,
-        }
-        messages = append(messages, userMessage)
+		prompt = strings.TrimSpace(prompt)
+		if prompt == "exit" {
+			break
+		}
 
-        params := buildAPIParams(prompt, messages)
-        body, err := getAPIResponse(params)
-        if err != nil {
-            log.Fatalf("Error calling the API: %v", err)
-        }
+		userMessage := map[string]string{
+			"role":    "user",
+			"content": prompt,
+		}
+		messages = append(messages, userMessage)
 
-        responseMessage := displayAPIResponse(body)
-        messages = append(messages, responseMessage)
-    }
+		params := buildAPIParams(prompt, messages)
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := getAPIResponse(params)
+			if err != nil {
+				log.Fatalf("Error calling the API: %v", err)
+			}
+		}()
+
+		wg.Wait()
+	}
 }
 
-func getAPIResponse(params map[string]interface{}) ([]byte, error) {
+func getAPIResponse(params map[string]interface{}) error {
 	apiKey, err := loadAPIKey()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	endpoint := "https://api.openai.com/v1/chat/completions"
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(paramsJSON))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	setRequestHeaders(req, apiKey)
@@ -89,59 +100,76 @@ func getAPIResponse(params map[string]interface{}) ([]byte, error) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
+	reader := bufio.NewReader(resp.Body)
 
-	return body, nil
-}
+	for {
+		line, err := reader.ReadString('\n')
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			log.Fatal(err)
+		}
 
-func displayAPIResponse(body []byte) map[string]string {
-	var apiResponse OpenAIResponse
-	err := json.Unmarshal(body, &apiResponse)
-	if err != nil {
-		log.Fatalf("Error unmarshalling the API response: %v", err)
-	}
+		// 空行を読み飛ばす
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
 
-	if &apiResponse != nil {
+		// fmt.Println("Raw response:", line)  // for debugging.
+
+		if strings.HasPrefix(line, "data: ") {
+			line = strings.TrimPrefix(line, "data: ")
+		}
+
+		if strings.TrimSpace(line) == "[DONE]" {
+			// Stream has ended.
+      fmt.Println("\n")
+			break
+		}
+
+		var apiResponse OpenAIResponse
+		err = json.Unmarshal([]byte(line), &apiResponse)
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		if apiResponse.Error != nil {
 			fmt.Printf("Error from the OpenAI API: %s - %s\n", apiResponse.Error.Code, apiResponse.Error.Message)
 		} else if len(apiResponse.Choices) > 0 {
-			response := apiResponse.Choices[0].Message.Content
-			fmt.Printf("Response from the OpenAI API: %s\n", response)
-			return map[string]string{
-				"role":    "assistant",
-				"content": response,
+			deltaContent := apiResponse.Choices[0].Delta.Content
+			if deltaContent != "" {
+				fmt.Print(deltaContent)
 			}
 		} else {
 			fmt.Println("No choices returned from the OpenAI API")
 		}
 	}
+
 	return nil
 }
 
 func buildAPIParams(prompt string, messages []map[string]string) map[string]interface{} {
-    messages = append(messages, map[string]string{
-        "role":    "user",
-        "content": prompt,
-    })
+	messages = append(messages, map[string]string{
+		"role":    "user",
+		"content": prompt,
+	})
 
-    maxTokens := 50
-    temperature := 0.8
-    topP := 0.9
+	maxTokens := 500
+	temperature := 0.8
+	topP := 0.9
 
-    return map[string]interface{}{
-        "model":       "gpt-3.5-turbo",
-        "messages":    messages,
-        "max_tokens":  maxTokens,
-        "temperature": temperature,
-        "top_p":       topP,
-    }
+	return map[string]interface{}{
+		"model":       "gpt-3.5-turbo",
+		"messages":    messages,
+		"max_tokens":  maxTokens,
+		"temperature": temperature,
+		"top_p":       topP,
+		"stream":      true,
+	}
 }
 
 func setRequestHeaders(req *http.Request, apiKey string) {
