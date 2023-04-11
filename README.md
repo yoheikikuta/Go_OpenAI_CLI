@@ -2,13 +2,17 @@
 
 This repository contains a simple chatbot that interacts with the OpenAI GPT-3.5-turbo model in real-time. The chatbot takes user input and sends it to the OpenAI API, which returns a generated response that the chatbot displays in the terminal.
 
+<div align="center">
+  <video src="https://user-images.githubusercontent.com/14804123/231175566-2dbcef22-2233-4b30-a70d-f1d2747a9b25.mp4" width="400" />
+</div>
+
 ## Features
 Real-time interaction with the OpenAI API
 Simple command-line interface
 Easy to understand code structure, suitable for customization
 
 ## Requirements 
-Go 1.16 or later
+Go 1.16 or later  
 An OpenAI API key
 
 ## Setup
