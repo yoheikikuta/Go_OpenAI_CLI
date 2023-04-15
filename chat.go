@@ -40,6 +40,12 @@ type OpenAIResponse struct {
 	Error *OpenAIError `json:"error"`
 }
 
+var (
+	// ANSI escape codes for text colors
+	colorReset  = "\033[0m"
+	colorCyan   = "\033[36m"
+)
+
 func main() {
 	reader := bufio.NewReader(os.Stdin)
 	messages := make([]map[string]string, 0)
@@ -131,7 +137,7 @@ func getAPIResponse(params map[string]interface{}) error {
 
 		if strings.TrimSpace(line) == "[DONE]" {
 			// Stream has ended.
-      fmt.Println("\n")
+			fmt.Println("\n")
 			break
 		}
 
@@ -146,7 +152,7 @@ func getAPIResponse(params map[string]interface{}) error {
 		} else if len(apiResponse.Choices) > 0 {
 			deltaContent := apiResponse.Choices[0].Delta.Content
 			if deltaContent != "" {
-				fmt.Print(deltaContent)
+				fmt.Printf("%s%s%s", colorCyan, deltaContent, colorReset)
 			}
 		} else {
 			fmt.Println("No choices returned from the OpenAI API")
